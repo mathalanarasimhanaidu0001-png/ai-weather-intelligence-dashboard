@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Weather Insights Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        .markdown-body h3 { font-size: 1.15rem; font-weight: 700; margin-top: 0.75rem; color: #818cf8; }
+        .markdown-body p { margin-bottom: 0.5rem; color: #cbd5e1; font-size: 0.9rem; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+    <header class="border-b border-slate-800 bg-slate-900/50 p-4 relative z-50">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <h1 class="text-xl font-bold tracking-wider text-indigo-400">WEATHER ANALYZER</h1>
+            <div class="relative w-full sm:w-auto flex gap-2">
+                <div class="relative w-full sm:w-64">
+                    <input type="text" id="cityInput" oninput="handleTypingInput()" placeholder="Enter city or village..." class="bg-slate-800 border border-slate-700 rounded-lg px-4 py-1.5 text-sm w-full focus:outline-none focus:border-indigo-500" autocomplete="off">
+                    <div id="suggestionsDropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-800 rounded-lg shadow-2xl max-h-60 overflow-y-auto z-50 divide-y divide-slate-800/60"></div>
+                </div>
+                <button id="analyzeBtn" onclick="fetchWeatherDataByName()" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-1.5 rounded-lg text-sm font-semibold transition cursor-pointer shrink-0">Analyze</button>
+            </div>
+        </div>
+        <div id="searchHistory" class="max-w-7xl mx-auto mt-3 flex flex-wrap gap-2 text-xs text-slate-400"></div>
+    </header>
+
+    <div id="loading" class="hidden text-center py-12 text-slate-400 animate-pulse">Analyzing telemetry data...</div>
+    <div id="errorMessage" class="hidden max-w-xl mx-auto mt-6 p-3 bg-red-900/20 border border-red-800 text-red-200 text-center rounded-lg text-sm"></div>
+
+    <main id="dashboard" class="hidden max-w-7xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="lg:col-span-5 flex flex-col gap-4">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 id="cityName" class="text-2xl font-bold">---</h2>
+                        <p id="weatherDesc" class="text-indigo-400 capitalize text-sm mt-1">---</p>
+                    </div>
+                    <img id="weatherIcon" src="" class="w-16 h-16">
+                </div>
+                <div class="mt-4"><span id="currentTemp" class="text-5xl font-black">--</span><span class="text-2xl text-slate-400">°C</span></div>
+                <div class="grid grid-cols-3 gap-2 mt-6 border-t border-slate-800 pt-4 text-center text-xs">
+                    <div><p class="text-slate-400">Feels Like</p><p id="feelsLike" class="font-bold text-sm mt-1">--</p></div>
+                    <div><p class="text-slate-400">Humidity</p><p id="humidity" class="font-bold text-sm mt-1">--</p></div>
+                    <div><p class="text-slate-400">Wind</p><p id="windSpeed" class="font-bold text-sm mt-1">--</p></div>
+                </div>
+            </div>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex-1">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300">Agentic Insights</h3>
+                    <span class="flex h-2 w-2 relative">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                </div>
+                <div id="aiAdvice" class="markdown-body bg-slate-950/50 rounded-lg p-3 border border-slate-800 min-h-[200px]"></div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col">
+            <div class="flex border-b border-slate-800 pb-2 gap-4 text-sm">
+                <button onclick="switchTab('forecast')" id="tabBtn-forecast" class="font-bold pb-1 border-b-2 border-indigo-500 text-indigo-400 cursor-pointer">5-Day Forecast</button>
+                <button onclick="switchTab('history')" id="tabBtn-history" class="font-bold pb-1 border-b-2 border-transparent text-slate-400 cursor-pointer">5-Day History</button>
+            </div>
+            <div id="tabContent-forecast" class="tab-content mt-4">
+                <div id="forecastContainer" class="grid grid-cols-2 sm:grid-cols-5 gap-2"></div>
+            </div>
+            <div id="tabContent-history" class="tab-content mt-4 hidden overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase">
+                            <th class="pb-2">Date</th>
+                            <th class="pb-2 text-slate-400">Max Temp</th>
+                            <th class="pb-2 text-blue-400">Min Temp</th>
+                            <th class="pb-2 text-indigo-400">Rain</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody" class="divide-y divide-slate-800/50 text-slate-300"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let typingTimer;
+        const debounceInterval = 350;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            renderSearchHistory();
+            document.addEventListener("click", (e) => {
+                if (e.target.id !== "cityInput") {
+                    document.getElementById("suggestionsDropdown").classList.add("hidden");
+                }
+            });
+        });
+
+        function handleTypingInput() {
+            clearTimeout(typingTimer);
+            const query = document.getElementById("cityInput").value.trim();
+            if (query.length < 3) {
+                document.getElementById("suggestionsDropdown").classList.add("hidden");
+                return;
+            }
+            typingTimer = setTimeout(() => fetchCitySuggestions(query), debounceInterval);
+        }
+
+        async function fetchCitySuggestions(query) {
+            const dropdown = document.getElementById("suggestionsDropdown");
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`);
+                if (!response.ok) return;
+                const matches = await response.json();
+
+                if (matches.length === 0) {
+                    dropdown.classList.add("hidden");
+                    return;
+                }
+
+                dropdown.innerHTML = "";
+                const seenKeys = new Set();
+
+                matches.forEach(place => {
+                    const fullName = place.display_name;
+                    const cleanCity = fullName.split(",")[0].trim();
+                    const lat = place.lat;
+                    const lon = place.lon;
+                    
+                    const uniqueKey = `${cleanCity.toLowerCase()}_${Math.round(lat*100)}_${Math.round(lon*100)}`;
+                    
+                    if (!seenKeys.has(uniqueKey)) {
+                        seenKeys.add(uniqueKey);
+                        dropdown.innerHTML += `
+                            <div onclick="selectSuggestedCity('${cleanCity.replace(/'/g, "\\'")}', ${lat}, ${lon})" class="px-4 py-2.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer transition-colors truncate font-medium">
+                                ${cleanCity} <span class="text-[10px] text-slate-500 ml-1">(${fullName.split(",").slice(1,3).join(",").trim()})</span>
+                            </div>`;
+                    }
+                });
+                dropdown.classList.remove("hidden");
+            } catch (err) {
+                console.error("Suggestions tracking issue:", err);
+            }
+        }
+
+        function selectSuggestedCity(cityName, lat, lon) {
+            document.getElementById("cityInput").value = cityName;
+            document.getElementById("suggestionsDropdown").classList.add("hidden");
+            fetchWeatherDataByCoords(lat, lon, cityName);
+        }
+
+        async function fetchWeatherDataByCoords(lat, lon, displayName) {
+            const analyzeBtn = document.getElementById("analyzeBtn");
+            
+            if (analyzeBtn) {
+                analyzeBtn.disabled = true;
+                analyzeBtn.classList.add("opacity-50", "cursor-not-allowed");
+                analyzeBtn.innerText = "Locked...";
+            }
+
+            document.getElementById("loading").classList.remove("hidden");
+            document.getElementById("errorMessage").classList.add("hidden");
+            document.getElementById("dashboard").classList.add("hidden");
+
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/api/weather-dashboard?lat=${lat}&lon=${lon}&name=${encodeURIComponent(displayName)}`);
+                if (!response.ok) throw new Error("Weather metrics unavailable for this region.");
+                const data = await response.json();
+
+                addToHistory(data.city_name);
+
+                const windKmH = Math.round(data.current.wind_speed * 3.6);
+
+                let fullLocationHeader = data.city_name;
+                if (data.state && data.state.trim() !== "") {
+                    fullLocationHeader += `, ${data.state}`;
+                }
+                fullLocationHeader += `, ${data.country}`;
+
+                document.getElementById("cityName").innerText = fullLocationHeader;
+                document.getElementById("weatherDesc").innerText = data.current.description;
+                document.getElementById("currentTemp").innerText = Math.round(data.current.temp);
+                document.getElementById("feelsLike").innerText = `${Math.round(data.current.feels_like)}°C`;
+                document.getElementById("humidity").innerText = `${data.current.humidity}%`;
+                document.getElementById("windSpeed").innerText = `${windKmH} km/h`;
+                document.getElementById("weatherIcon").src = `https://openweathermap.org/img/wn/${data.current.icon}@2x.png`;
+
+                const fContainer = document.getElementById("forecastContainer");
+                fContainer.innerHTML = "";
+                data.forecast.forEach(day => {
+                    fContainer.innerHTML += `
+                        <div class="bg-slate-950/50 border border-slate-800 rounded-lg p-2 flex flex-col items-center text-center">
+                            <p class="text-[10px] text-slate-400">${new Date(day.date).toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'})}</p>
+                            <img src="https://openweathermap.org/img/wn/${day.icon}.png" class="w-10 h-10">
+                            <p class="text-sm font-bold">${Math.round(day.temp)}°C</p>
+                        </div>`;
+                });
+
+                const hBody = document.getElementById("historyTableBody");
+                hBody.innerHTML = "";
+                data.history.forEach(row => {
+                    const formattedDate = new Date(row.date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+                    const maxTempColor = row.max_temp >= 33 ? 'text-red-400' : 'text-amber-500';
+                    const rainColor = row.rain > 0 ? 'text-sky-400 font-semibold' : 'text-slate-500';
+                    const rainDisplay = row.rain > 0 ? `${row.rain} mm` : '0 mm';
+
+                    hBody.innerHTML += `
+                        <tr class="h-9 hover:bg-slate-800/30 transition-colors">
+                            <td class="font-medium text-slate-400">${formattedDate}</td>
+                            <td class="${maxTempColor} font-semibold">${row.max_temp}°C</td>
+                            <td class="text-blue-400 font-semibold">${row.min_temp}°C</td>
+                            <td class="${rainColor}">${rainDisplay}</td>
+                        </tr>`;
+                });
+
+                // Fixed Frontend Text Formatter Loop
+                let cleanAdvice = data.ai_advice || "";
+                let htmlOutput = "";
+                let segments = cleanAdvice.split("###");
+                
+                segments.forEach(seg => {
+                    if(!seg.trim()) return;
+                    let lines = seg.split("\n");
+                    let title = lines[0].trim();
+                    htmlOutput += `<h3>${title}</h3>`;
+                    
+                    for(let i = 1; i < lines.length; i++) {
+                        let line = lines[i].trim();
+                        if(!line) continue;
+                        if(line.startsWith("-") || line.startsWith("*")) {
+                            htmlOutput += `<p class="pl-3 text-slate-300 flex items-start mt-1"><span class="text-indigo-400 mr-2">•</span> ${line.substring(1).trim()}</p>`;
+                        } else {
+                            htmlOutput += `<p class="text-slate-400">${line}</p>`;
+                        }
+                    }
+                });
+
+                document.getElementById("aiAdvice").innerHTML = htmlOutput ? htmlOutput : "<p class='text-slate-500'>Advice channel quiet.</p>";
+
+                document.getElementById("loading").classList.add("hidden");
+                document.getElementById("dashboard").classList.remove("hidden");
+            } catch (err) {
+                document.getElementById("loading").classList.add("hidden");
+                document.getElementById("errorMessage").innerText = err.message;
+                document.getElementById("errorMessage").classList.remove("hidden");
+            } finally {
+                setTimeout(() => {
+                    if (analyzeBtn) {
+                        analyzeBtn.disabled = false;
+                        analyzeBtn.classList.remove("opacity-50", "cursor-not-allowed");
+                        analyzeBtn.innerText = "Analyze";
+                    }
+                }, 3000);
+            }
+        }
+
+        async function fetchWeatherDataByName() {
+            const city = document.getElementById("cityInput").value.trim();
+            if (!city) return;
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}&limit=1`);
+                if (!response.ok) return;
+                const matches = await response.json();
+                if (matches.length > 0) {
+                    selectSuggestedCity(city, matches[0].lat, matches[0].lon);
+                } else {
+                    throw new Error("Location not indexed. Try searching for your nearest town.");
+                }
+            } catch (err) {
+                document.getElementById("errorMessage").innerText = err.message;
+                document.getElementById("errorMessage").classList.remove("hidden");
+            }
+        }
+
+        function addToHistory(city) {
+            if (!city) return;
+            let history = JSON.parse(localStorage.getItem("weather_history")) || [];
+            history = history.filter(item => item.toLowerCase() !== city.toLowerCase());
+            history.unshift(city);
+            if (history.length > 5) history.pop();
+            localStorage.setItem("weather_history", JSON.stringify(history));
+            renderSearchHistory();
+        }
+
+        function renderSearchHistory() {
+            const container = document.getElementById("searchHistory");
+            const history = JSON.parse(localStorage.getItem("weather_history")) || [];
+            if (history.length === 0) {
+                container.innerHTML = "";
+                return;
+            }
+            container.innerHTML = `<span class="self-center text-slate-500 font-medium tracking-wide">Recent:</span>`;
+            history.forEach(city => {
+                container.innerHTML += `
+                    <button onclick="triggerHistorySearch('${city}')" class="bg-slate-800/80 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-md cursor-pointer transition-all border border-slate-700/40 capitalize hover:text-indigo-400">
+                        ${city}
+                    </button>
+                `;
+            });
+        }
+
+        function triggerHistorySearch(city) {
+            document.getElementById("cityInput").value = city;
+            fetchWeatherDataByName();
+        }
+
+        function switchTab(targetTab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`tabContent-${targetTab}`).classList.remove('hidden');
+            ['forecast', 'history'].forEach(tab => {
+                const btn = document.getElementById(`tabBtn-${tab}`);
+                if (tab === targetTab) {
+                    btn.classList.add('border-indigo-500', 'text-indigo-400');
+                    btn.classList.remove('border-transparent', 'text-slate-400');
+                } else {
+                    btn.classList.remove('border-indigo-500', 'text-indigo-400');
+                    btn.classList.add('border-transparent', 'text-slate-400');
+                }
+            });
+        }
+    </script>
+</body>
+</html>
