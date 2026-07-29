@@ -162,7 +162,8 @@
             document.getElementById("dashboard").classList.add("hidden");
 
             try {
-                const response = await fetch(`http://127.0.0.1:8000/api/weather-dashboard?lat=${lat}&lon=${lon}&name=${encodeURIComponent(displayName)}`);
+                // FIXED: Relative endpoint call for Vercel production deployment
+                const response = await fetch(`/api/weather-dashboard?lat=${lat}&lon=${lon}&name=${encodeURIComponent(displayName)}`);
                 if (!response.ok) throw new Error("Weather metrics unavailable for this region.");
                 const data = await response.json();
 
@@ -212,7 +213,6 @@
                         </tr>`;
                 });
 
-                // Fixed Frontend Text Formatter Loop
                 let cleanAdvice = data.ai_advice || "";
                 let htmlOutput = "";
                 let segments = cleanAdvice.split("###");
