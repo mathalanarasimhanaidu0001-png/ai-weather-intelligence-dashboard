@@ -134,7 +134,7 @@ def get_dashboard_data(lat: float, lon: float, name: str):
 
         chat_completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt_text}],
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             temperature=0.2
         )
         ai_advice = chat_completion.choices[0].message.content
