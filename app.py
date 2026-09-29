@@ -134,10 +134,13 @@ def get_dashboard_data(lat: float, lon: float, name: str):
 
         chat_completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt_text}],
-            model="openai/gpt-oss-120b",
+            model="llama-3.1-8b-instant",
             temperature=0.2
         )
+        # FIX 1 & 2: Fixed alignment and updated data extraction syntax
         ai_advice = chat_completion.choices[0].message.content
+
+    # FIX 3: Aligned the 'except' statement perfectly with the 'try' statement
     except Exception as e:
         ai_advice = f"### Error\nGeneration engine error: {str(e)}"
 
