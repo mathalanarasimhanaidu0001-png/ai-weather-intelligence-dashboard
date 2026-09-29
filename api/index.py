@@ -1,17 +1,16 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import requests
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from groq import Groq
 
-load_dotenv()
-
 app = FastAPI()
 
-# Enable CORS for all incoming requests (Vercel Frontend)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,39 +27,32 @@ weather_cache = {}
 @app.get("/", response_class=HTMLResponse)
 def read_index():
     try:
-        # Dynamic path mapping to find index.html at the root folder from inside api/
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        html_path = os.path.join(base_dir, "index.html")
-        with open(html_path, "r", encoding="utf-8") as f:
+        with open("index.html", "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="index.html file not found in root directory.")
+        raise HTTPException(status_code=404, detail="index.html file not found.")
 
 @app.get("/api/weather-dashboard")
-def get_dashboard_data(lat: float, lon: float, name: str = ""):
+def get_dashboard_data(lat: float, lon: float, name: str):
     if not OPENWEATHER_API_KEY:
-        raise HTTPException(status_code=500, detail="OpenWeather Key missing in environment variables.")
+        raise HTTPException(status_code=500, detail="OpenWeather Key missing in .env file.")
     if not GROQ_API_KEY:
-        raise HTTPException(status_code=500, detail="Groq API Key missing in environment variables.")
+        raise HTTPException(status_code=500, detail="Groq API Key missing in .env file.")
 
     cache_key = f"{round(lat, 2)}_{round(lon, 2)}"
     current_time = datetime.utcnow()
 
-    # Cache handling (10 min expiration)
     if cache_key in weather_cache:
         cached_entry = weather_cache[cache_key]
         if current_time - cached_entry["timestamp"] < timedelta(minutes=10):
             return cached_entry["data"]
 
-    # Reverse Geocoding (Enforced HTTPS)
-    geo_url = f"https://api.openweathermap.org/geo/1.0/reverse?lat={lat}&lon={lon}&limit=1&appid={OPENWEATHER_API_KEY}"
-    try:
-        geo_res = requests.get(geo_url)
-        geo_data = geo_res.json()
-        state_name = geo_data[0].get("state", "") if geo_data and isinstance(geo_data, list) else ""
-        country_code = geo_data[0].get("country", "") if geo_data and isinstance(geo_data, list) else ""
-    except Exception:
-        state_name, country_code = "", ""
+    # Reverse Geocoding
+    geo_url = f"http://api.openweathermap.org/geo/1.0/reverse?lat={lat}&lon={lon}&limit=1&appid={OPENWEATHER_API_KEY}"
+    geo_res = requests.get(geo_url)
+    geo_data = geo_res.json()
+    state_name = geo_data[0].get("state", "") if geo_data else ""
+    country_code = geo_data[0].get("country", "") if geo_data else ""
 
     # Current Weather
     current_url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={OPENWEATHER_API_KEY}"
@@ -102,7 +94,7 @@ def get_dashboard_data(lat: float, lon: float, name: str = ""):
                 "rain": h_data["rain_sum"][i]
             })
 
-    # AI Pipeline Integration
+    # High-Speed Stable Generation Pipeline
     ai_advice = "### What to Wear\nMetrics incomplete.\n### Precautions\nMetrics incomplete.\n### Activity\nMetrics incomplete."
     
     try:
@@ -142,10 +134,13 @@ def get_dashboard_data(lat: float, lon: float, name: str = ""):
 
         chat_completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt_text}],
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-20b",
             temperature=0.2
         )
+        # FIX 1 & 2: Fixed alignment and updated data extraction syntax
         ai_advice = chat_completion.choices[0].message.content
+
+    # FIX 3: Aligned the 'except' statement perfectly with the 'try' statement
     except Exception as e:
         ai_advice = f"### Error\nGeneration engine error: {str(e)}"
 
